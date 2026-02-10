@@ -1225,3 +1225,61 @@ tbody tr:hover{
   }
 }
 
+/* Prevent long text from breaking the mobile layout */
+.topItem,
+.topTitle,
+.topMeta,
+.tips li,
+.panel,
+.statCard,
+.kv,
+.empty,
+tbody td,
+td,
+.valueCell,
+.messageCell{
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* If you have a specific class for the detailed log text blocks */
+.detailItem,
+.detailRow,
+.detailValue,
+.detailMessage{
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Make sure pills and badges do not force width */
+.badge,
+.topCount,
+.sevTag{
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px){
+  .detailRow{
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .detailRow .label{
+    color: #6b8f8c;
+    font-size: 12px;
+  }
+
+  .detailRow .value{
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+.topTitle,
+.topMeta{
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
