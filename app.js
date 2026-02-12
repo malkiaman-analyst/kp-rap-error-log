@@ -1,7 +1,7 @@
 // ============================================
 // CONFIGURATION - EDIT THIS LINE:
 // ============================================
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfyPFxIym3UIbbIayCzH4yfgc7F3dyQeTAY30BNJEbP9XNoYeAdkjytZQ_XHLnBVLnvWI-Bme9AcXC/pub?gid=0&single=true&output=csv";
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRNfjgC4FQwiXqitxylLUVD7GiCdEHkFqlC0I0gFiD6_msxEI8vbKjh2LBygOUkzw/pub?gid=110465285&single=true&output=csv";
 
 // Match these to your sheet values
 const CRITICAL_LABELS = ["Critical", "CRITICAL", "Crit"];
@@ -429,3 +429,4 @@ function escapeHtml(s){
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
