@@ -28,13 +28,15 @@ const elEmpty = document.getElementById("emptyState");
 const elStatus = document.getElementById("statusPill");
 const elDownloadBtn = document.getElementById("downloadBtn");
 
+// toast (optional, if you added it in HTML)
+const elToast = document.getElementById("copyToast");
+
 init();
 
 async function init(){
   try{
     setStatus("Loading data", "neutral");
 
-    // Validate CSV_URL is set
     if (!CSV_URL || CSV_URL.trim() === ""){
       setStatus("CSV_URL not configured", "warn");
       elResults.innerHTML = `<div class="resultItem" style="padding: 20px;">
@@ -43,10 +45,23 @@ async function init(){
       return;
     }
 
-    const csvText = await fetchText(CSV_URL);
+    // ✅ Normalize Google sheet URL (supports share link and publish link)
+    const normalizedUrl = normalizeGoogleSheetUrl(CSV_URL);
+
+    const csvText = await fetchText(normalizedUrl);
+
+    // ✅ If Google returned HTML instead of CSV, fail with a helpful message
+    if (looksLikeHtml(csvText)){
+      throw new Error(
+        "Google returned HTML instead of CSV. Please re-check Publish to web OR use a normal sheet link. " +
+        "Tip: open the link in a browser, it must download/show CSV, not a Google page."
+      );
+    }
+
     const raw = parseCSV(csvText);
 
     allRows = raw.map(r => ({
+      recordKey: (r["Record Key"] || "").trim(), // ✅ ADDED
       submissionDate: (r["Submission Date"] || "").trim(),
       survey: (r["Survey"] || "").trim(),
       severity: (r["Severity"] || "").trim(),
@@ -66,11 +81,12 @@ async function init(){
     setStatus("Data load failed", "warn");
     elResults.innerHTML = `<div class="resultItem" style="padding: 20px;">
       <strong>Error loading data:</strong><br>
-      ${err.message}<br><br>
+      ${escapeHtml(err.message)}<br><br>
       Please verify:<br>
-      1. Your Google Sheet is published to web (File → Share → Publish to web)<br>
-      2. The CSV URL is correct<br>
-      3. The sheet has the required columns
+      1. Your Google Sheet is <b>published to web</b> (File → Share → Publish to web)<br>
+      2. The CSV URL opens as <b>CSV text</b> (not a Google HTML page)<br>
+      3. The sheet has these columns:<br>
+      <code>Record Key, Submission Date, Survey, Severity, Rule ID, Title, Message, Value, Enumerator Name, Enumerator ID, District</code>
     </div>`;
     console.error("Full error:", err);
   }
@@ -109,6 +125,15 @@ function wireEvents(){
   elDownloadBtn.addEventListener("click", () => {
     if (!currentRenderedRows.length) return;
     downloadCurrentCSV();
+  });
+
+  // ✅ Click-to-copy for table cells (no inline onclick needed)
+  elErrorsTbody.addEventListener("click", (e) => {
+    const cell = e.target.closest(".copyable");
+    if (!cell) return;
+    const val = cell.getAttribute("data-copy") || "";
+    if (!val) return;
+    copyToClipboard(val);
   });
 }
 
@@ -164,11 +189,24 @@ function selectEnumerator(key){
   elEnumCard.innerHTML = `
     <h2 style="margin:0;font-size:18px;">Enumerator Details</h2>
     <div class="kv">
-      <div class="k">Enumerator ID</div><div class="v">${escapeHtml(e.enumeratorId || "-")}</div>
-      <div class="k">Name</div><div class="v">${escapeHtml(e.enumeratorName || "-")}</div>
-      <div class="k">District</div><div class="v">${escapeHtml(e.district || "-")}</div>
+      <div class="k">Enumerator ID</div>
+      <div class="v copyable" data-copy="${attrEscape(e.enumeratorId || "")}">${escapeHtml(e.enumeratorId || "-")}</div>
+
+      <div class="k">Name</div>
+      <div class="v copyable" data-copy="${attrEscape(e.enumeratorName || "")}">${escapeHtml(e.enumeratorName || "-")}</div>
+
+      <div class="k">District</div>
+      <div class="v copyable" data-copy="${attrEscape(e.district || "")}">${escapeHtml(e.district || "-")}</div>
     </div>
   `;
+
+  // ✅ make enum card copyable
+  elEnumCard.querySelectorAll(".copyable").forEach(node => {
+    node.addEventListener("click", () => {
+      const v = node.getAttribute("data-copy") || "";
+      if (v) copyToClipboard(v);
+    });
+  });
 
   const rows = allRowsForSelected();
 
@@ -208,10 +246,7 @@ function renderErrorsForSelected(){
 
   rows.sort((a, b) => (b.submissionDate || "").localeCompare(a.submissionDate || ""));
 
-  // Store for download
   currentRenderedRows = rows;
-
-  // Enable/disable download button
   elDownloadBtn.disabled = rows.length === 0;
 
   // Stats
@@ -228,21 +263,22 @@ function renderErrorsForSelected(){
 
   elCountLine.textContent = `${totalErrors} record(s) shown`;
 
-  // Top 3 frequent errors
   renderTop3(rows);
 
-  // Table
+  // ✅ Table order you requested:
+  // Key, Submission Date, Survey, Severity, Error ID, Title, Message, Value
   elErrorsTbody.innerHTML = rows.map(r => `
-  <tr>
-    <td data-label="Submission Date">${escapeHtml(r.submissionDate)}</td>
-    <td data-label="Survey">${escapeHtml(r.survey)}</td>
-    <td data-label="Severity">${severityTag(r.severity)}</td>
-    <td data-label="Error ID">${escapeHtml(r.ruleId)}</td>
-    <td data-label="Title">${escapeHtml(r.title)}</td>
-    <td data-label="Message">${escapeHtml(r.message)}</td>
-    <td data-label="Value">${escapeHtml(r.value)}</td>
-  </tr>
-`).join("");
+    <tr>
+      <td data-label="Record Key" class="copyable" data-copy="${attrEscape(r.recordKey)}">${escapeHtml(r.recordKey)}</td>
+      <td data-label="Submission Date" class="copyable" data-copy="${attrEscape(r.submissionDate)}">${escapeHtml(r.submissionDate)}</td>
+      <td data-label="Survey" class="copyable" data-copy="${attrEscape(r.survey)}">${escapeHtml(r.survey)}</td>
+      <td data-label="Severity" class="copyable" data-copy="${attrEscape(r.severity)}">${severityTag(r.severity)}</td>
+      <td data-label="Error ID" class="copyable" data-copy="${attrEscape(r.ruleId)}">${escapeHtml(r.ruleId)}</td>
+      <td data-label="Title" class="copyable" data-copy="${attrEscape(r.title)}">${escapeHtml(r.title)}</td>
+      <td data-label="Message" class="copyable" data-copy="${attrEscape(r.message)}">${escapeHtml(r.message)}</td>
+      <td data-label="Value" class="copyable" data-copy="${attrEscape(r.value)}">${escapeHtml(r.value)}</td>
+    </tr>
+  `).join("");
 
   if (rows.length === 0){
     elEmpty.classList.remove("hidden");
@@ -257,7 +293,6 @@ function renderTop3(rows){
     return;
   }
 
-  // Group by Rule ID + Title (you can change grouping if needed)
   const map = new Map();
   for (const r of rows){
     const key = `${r.ruleId}|||${r.title}`;
@@ -288,9 +323,10 @@ function downloadCurrentCSV(){
   const survey = elSurveyFilter.value || "All";
   const sev = elSeverityFilter.value || "All";
 
+  // ✅ Includes Record Key + order requested
   const headers = [
     "Enumerator ID","Enumerator Name","District",
-    "Submission Date","Survey","Severity","Rule ID","Title","Message","Value"
+    "Record Key","Submission Date","Survey","Severity","Rule ID","Title","Message","Value"
   ];
 
   const lines = [headers.join(",")];
@@ -300,6 +336,7 @@ function downloadCurrentCSV(){
       e?.enumeratorId || "",
       e?.enumeratorName || "",
       e?.district || "",
+      r.recordKey,
       r.submissionDate,
       r.survey,
       r.severity,
@@ -329,9 +366,48 @@ function downloadCurrentCSV(){
   URL.revokeObjectURL(url);
 }
 
+function copyToClipboard(text){
+  const t = String(text ?? "");
+  if (!t) return;
+
+  // Modern clipboard API (works on HTTPS + localhost)
+  if (navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(t)
+      .then(() => showToast("Copied"))
+      .catch(() => fallbackCopy(t));
+    return;
+  }
+
+  fallbackCopy(t);
+}
+
+function fallbackCopy(text){
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  try{
+    document.execCommand("copy");
+    showToast("Copied");
+  } catch {
+    showToast("Copy failed");
+  }
+  ta.remove();
+}
+
+let toastTimer = null;
+function showToast(msg){
+  if (!elToast) return;
+  elToast.textContent = msg;
+  elToast.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => elToast.classList.remove("show"), 900);
+}
+
 function csvEscape(v){
   const s = String(v ?? "");
-  // If it contains comma, quote, or newline, wrap in quotes and escape quotes
   if (/[",\n]/.test(s)){
     return `"${s.replaceAll('"', '""')}"`;
   }
@@ -368,6 +444,9 @@ function clearResults(){
   elResults.innerHTML = "";
 }
 
+// ============================================
+// DATA LOADING HELPERS
+// ============================================
 async function fetchText(url){
   const res = await fetch(url, { cache: "no-store" });
   const txt = await res.text();
@@ -375,6 +454,44 @@ async function fetchText(url){
   return txt;
 }
 
+function looksLikeHtml(text){
+  const t = (text || "").trim().toLowerCase();
+  return t.startsWith("<!doctype html") || t.startsWith("<html") || t.includes("<head") || t.includes("googleusercontent");
+}
+
+// Normalize different Google Sheet link formats into a reliable CSV export URL
+function normalizeGoogleSheetUrl(url){
+  const u = String(url || "").trim();
+  if (!u) return u;
+
+  // If already looks like a CSV export, keep it
+  if (u.includes("output=csv") || u.includes("tqx=out:csv")) return u;
+
+  // Normal sheet link: /spreadsheets/d/<id>/...
+  const m1 = u.match(/https:\/\/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (m1){
+    const sheetId = m1[1];
+    const gidMatch = u.match(/gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : "0";
+    return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  }
+
+  // Published link: /spreadsheets/d/e/<pubId>/pub...
+  const m2 = u.match(/https:\/\/docs\.google\.com\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
+  if (m2){
+    const pubId = m2[1];
+    const gidMatch = u.match(/gid=([0-9]+)/);
+    const gid = gidMatch ? gidMatch[1] : "0";
+    return `https://docs.google.com/spreadsheets/d/e/${pubId}/pub?gid=${gid}&single=true&output=csv`;
+  }
+
+  // Fallback: use as-is
+  return u;
+}
+
+// ============================================
+// CSV PARSER
+// ============================================
 function parseCSV(text){
   const rows = [];
   const lines = text.replace(/\r/g, "").split("\n").filter(Boolean);
@@ -421,6 +538,9 @@ function splitCSVLine(line){
   return out;
 }
 
+// ============================================
+// ESCAPING HELPERS
+// ============================================
 function escapeHtml(s){
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -430,3 +550,13 @@ function escapeHtml(s){
     .replaceAll("'", "&#039;");
 }
 
+// For putting values into attributes safely: data-copy="..."
+function attrEscape(s){
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+    .replaceAll("\n", " ");
+}
